@@ -535,7 +535,7 @@
 <body>
   <header class="wrap nav">
     <a class="brand" href="/" aria-label="BiuLog home">
-      <img src="/assets/biulog-icon.png" alt="BiuLog app icon">
+      <img src="/assets/biulog-icon.webp" alt="BiuLog app icon" width="44" height="44">
       <span>BiuLog</span>
     </a>
     <div class="nav-actions">
@@ -574,15 +574,15 @@
 
       <div class="showcase" aria-label="BiuLog app screenshots">
         <div class="mini-shot one">
-          <img id="miniOne" src="/assets/screens/zh/screen-4.jpg" alt="BiuLog analysis screenshot">
+          <img id="miniOne" data-shot-index="4" src="/assets/screens/zh/screen-4.webp" alt="BiuLog analysis screenshot" loading="lazy" decoding="async">
         </div>
         <div class="phone">
           <div class="phone-inner">
-            <img id="heroShot" src="/assets/screens/zh/screen-1.jpg" alt="BiuLog home screenshot">
+            <img id="heroShot" data-shot-index="1" src="/assets/screens/zh/screen-1.webp" alt="BiuLog home screenshot" fetchpriority="high" decoding="async">
           </div>
         </div>
         <div class="mini-shot two">
-          <img id="miniTwo" src="/assets/screens/zh/screen-6.jpg" alt="BiuLog vaccine screenshot">
+          <img id="miniTwo" data-shot-index="6" src="/assets/screens/zh/screen-6.webp" alt="BiuLog vaccine screenshot" loading="lazy" decoding="async">
         </div>
       </div>
     </section>
@@ -830,7 +830,7 @@
     }
 
     function imagePath(lang, index) {
-      return `/assets/screens/${screenLangMap[lang]}/screen-${index}.jpg`;
+      return `/assets/screens/${screenLangMap[lang]}/screen-${index}.webp?v=20260513`;
     }
 
     function setText(lang) {
@@ -879,9 +879,11 @@
     }
 
     function renderImages(lang) {
-      document.getElementById("heroShot").src = imagePath(lang, 1);
-      document.getElementById("miniOne").src = imagePath(lang, 4);
-      document.getElementById("miniTwo").src = imagePath(lang, 6);
+      document.querySelectorAll("[data-shot-index]").forEach((image) => {
+        const index = Number(image.getAttribute("data-shot-index"));
+        image.src = imagePath(lang, index);
+        image.alt = `BiuLog ${lang} screenshot ${index}`;
+      });
 
       const gallery = document.getElementById("gallery");
       gallery.innerHTML = "";
@@ -892,6 +894,7 @@
         image.src = imagePath(lang, index);
         image.alt = `BiuLog screenshot ${index}`;
         image.loading = "lazy";
+        image.decoding = "async";
         card.appendChild(image);
         gallery.appendChild(card);
       });
