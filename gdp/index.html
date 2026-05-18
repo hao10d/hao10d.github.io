@@ -137,19 +137,34 @@
     }
 
     select,
-    input[type="search"] {
+    input[type="search"],
+    input[type="tel"],
+    textarea {
       width: 100%;
-      min-height: 46px;
       border: 1px solid #cbd7d1;
       border-radius: 8px;
       background: #fff;
       color: var(--ink);
-      padding: 0 12px;
       outline: none;
     }
 
+    select,
+    input[type="search"],
+    input[type="tel"] {
+      min-height: 46px;
+      padding: 0 12px;
+    }
+
+    textarea {
+      min-height: 78px;
+      padding: 10px 12px;
+      resize: vertical;
+    }
+
     select:focus,
-    input[type="search"]:focus {
+    input[type="search"]:focus,
+    input[type="tel"]:focus,
+    textarea:focus {
       border-color: var(--green);
       box-shadow: 0 0 0 3px rgba(25, 115, 90, .14);
     }
@@ -459,6 +474,56 @@
       color: var(--red);
     }
 
+    .manual-box {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid #d8e7e0;
+      border-radius: 8px;
+      background: #fbfdfc;
+    }
+
+    .manual-title {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 900;
+      color: var(--green-dark);
+    }
+
+    .manual-fields {
+      display: grid;
+      grid-template-columns: minmax(0, 220px) 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .manual-call {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      border-radius: 8px;
+      background: #245f9f;
+      color: #fff;
+      padding: 0 12px;
+      text-decoration: none;
+      font-weight: 900;
+    }
+
+    .manual-call.hidden {
+      display: none;
+    }
+
+    .save-state {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
     details {
       margin-top: 10px;
       border-top: 1px solid var(--line);
@@ -565,6 +630,10 @@
         grid-column: 1 / -1;
       }
 
+      .manual-fields {
+        grid-template-columns: 1fr;
+      }
+
       .source-grid {
         grid-template-columns: 80px 1fr;
       }
@@ -654,12 +723,14 @@
     const resetButton = document.querySelector("#resetButton");
     const storageKey = "gdp-call-progress-v1";
     const stateKey = "gdp-call-state-v1";
+    const manualKey = "gdp-manual-data-v1";
 
     let progress = loadProgress();
+    let manualData = loadManualData();
     let state = loadState();
     let visibleCompanies = [];
     let renderLimit = 60;
-    const tagChoices = ["製造業", "販賣業", "西藥製劑", "原料藥", "冷鏈藥品", "醫用氣體", "有電話", "無公開電話"];
+    const tagChoices = ["製造業", "販賣業", "西藥製劑", "原料藥", "冷鏈藥品", "醫用氣體", "採購", "儲存", "供應", "運輸", "輸入", "輸出", "有公開電話", "無公開電話", "有手動電話", "有備註"];
     let activeTagMode = state.activeTagMode || "want";
     let includeTags = new Set(state.includeTags || []);
     let excludeTags = new Set(state.excludeTags || []);
@@ -674,6 +745,18 @@
 
     function saveProgress() {
       localStorage.setItem(storageKey, JSON.stringify(progress));
+    }
+
+    function loadManualData() {
+      try {
+        return JSON.parse(localStorage.getItem(manualKey)) || {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveManualData() {
+      localStorage.setItem(manualKey, JSON.stringify(manualData));
     }
 
     function loadState() {
@@ -718,11 +801,20 @@
     }
 
     function companyTagSet(company) {
+      const manual = manualData[company.id] || {};
       return new Set([
         ...(company.kindTags || splitKindTags(company.kind)),
         ...(company.tags || []),
-        company.phone ? "有電話" : "無公開電話",
-      ]);
+        ...(company.actions || []),
+        company.phone ? "有公開電話" : "無公開電話",
+        manual.phone ? "有手動電話" : "",
+        manual.note ? "有備註" : "",
+      ].filter(Boolean));
+    }
+
+    function hasAnyPhone(company) {
+      const manual = manualData[company.id] || {};
+      return Boolean(company.phone || manual.phone);
     }
 
     function renderTagFilters() {
@@ -773,6 +865,9 @@
         company.apiOps,
         company.intro,
         company.tags.join(" "),
+        (company.actions || []).join(" "),
+        (manualData[company.id]?.phone || ""),
+        (manualData[company.id]?.note || ""),
         (company.recordDetails || []).map((item) => `${item.id} ${item.kind} ${item.westOps} ${item.apiOps}`).join(" "),
       ].join(" "));
     }
@@ -782,7 +877,7 @@
       const keyword = normalize(searchInput.value);
       visibleCompanies = companies.filter((company) => {
         if (company.city !== city) return false;
-        if (phoneOnly.checked && !company.phone) return false;
+        if (phoneOnly.checked && !hasAnyPhone(company)) return false;
         if (hideDone.checked && progress[company.id]) return false;
         const tags = companyTagSet(company);
         for (const tag of includeTags) {
@@ -811,7 +906,8 @@
     function render() {
       const cityAll = companies.filter((company) => company.city === citySelect.value);
       const cityCalled = cityAll.filter((company) => progress[company.id]).length;
-      const withPhone = visibleCompanies.filter((company) => company.phone).length;
+      const publicPhoneCount = visibleCompanies.filter((company) => company.phone).length;
+      const manualPhoneCount = visibleCompanies.filter((company) => manualData[company.id]?.phone).length;
       const sourceRows = visibleCompanies.reduce((sum, company) => sum + (company.sourceCount || 1), 0);
       progressCount.textContent = `${cityCalled} / ${cityAll.length}`;
       summaryLine.innerHTML = [
@@ -819,7 +915,8 @@
         `符合 ${visibleCompanies.length} 家`,
         `原始 ${sourceRows} 筆`,
         `已載入 ${Math.min(renderLimit, visibleCompanies.length)} 家`,
-        `有電話 ${withPhone} 家`,
+        `公開電話 ${publicPhoneCount} 家`,
+        `手動電話 ${manualPhoneCount} 家`,
         `已電訪 ${cityCalled} 家`,
       ].map((item) => `<span>${item}</span>`).join("");
 
@@ -837,8 +934,12 @@
 
     function companyCard(company, filteredIndex) {
       const done = Boolean(progress[company.id]);
+      const manual = manualData[company.id] || {};
       const phoneLabel = company.phone ? escapeHtml(company.phone) : "無公開電話";
       const phoneHref = company.phone ? `tel:${telNumber(company.phone)}` : "#";
+      const manualPhone = manual.phone || "";
+      const manualNote = manual.note || "";
+      const manualHref = manualPhone ? `tel:${telNumber(manualPhone)}` : "#";
       const sourceTag = company.confidence ? `<span class="tag source">${escapeHtml(company.confidence)}信心</span>` : `<span class="tag warn">待查電話</span>`;
       const ops = [company.westOps && `西藥製劑：${company.westOps}`, company.apiOps && `原料藥：${company.apiOps}`].filter(Boolean).join("；");
       const recordIds = Array.isArray(company.recordIds) ? company.recordIds.join(", ") : company.id;
@@ -872,6 +973,23 @@
                 ${done ? "已電訪" : "標記已電訪"}
               </button>
               <button class="small-button" type="button" data-copy="${escapeHtml(company.phone || "")}" ${company.phone ? "" : "disabled"}>複製電話</button>
+            </div>
+            <div class="manual-box" data-manual-box="${escapeHtml(company.id)}">
+              <div class="manual-title">
+                <span>手動資料</span>
+                <a class="manual-call${manualPhone ? "" : " hidden"}" href="${manualHref}" data-manual-call="${escapeHtml(company.id)}">撥打手動電話：${escapeHtml(manualPhone)}</a>
+              </div>
+              <div class="manual-fields">
+                <label>
+                  手動電話
+                  <input type="tel" inputmode="tel" placeholder="例如 04-12345678" value="${escapeHtml(manualPhone)}" data-manual-phone="${escapeHtml(company.id)}">
+                </label>
+                <label>
+                  備註
+                  <textarea placeholder="窗口、分機、回電時間、是否有意願..." data-manual-note="${escapeHtml(company.id)}">${escapeHtml(manualNote)}</textarea>
+                </label>
+              </div>
+              <div class="save-state" data-save-state="${escapeHtml(company.id)}">${manualPhone || manualNote ? "已儲存在這台裝置" : "尚未填寫手動資料"}</div>
             </div>
             <details>
               <summary>來源與比對</summary>
@@ -926,8 +1044,43 @@
       if (shouldRender) applyFilters();
     }
 
+    function updateManualField(id, field, value) {
+      const key = String(id);
+      const current = manualData[key] || {};
+      current[field] = value.trim();
+      current.updatedAt = new Date().toISOString();
+      if (!current.phone && !current.note) {
+        delete manualData[key];
+      } else {
+        manualData[key] = current;
+      }
+      saveManualData();
+      refreshManualDisplay(key);
+    }
+
+    function refreshManualDisplay(id) {
+      const manual = manualData[id] || {};
+      const call = document.querySelector(`[data-manual-call="${cssEscape(id)}"]`);
+      const stateLabel = document.querySelector(`[data-save-state="${cssEscape(id)}"]`);
+      if (call) {
+        if (manual.phone) {
+          call.classList.remove("hidden");
+          call.href = `tel:${telNumber(manual.phone)}`;
+          call.textContent = `撥打手動電話：${manual.phone}`;
+        } else {
+          call.classList.add("hidden");
+          call.href = "#";
+          call.textContent = "撥打手動電話";
+        }
+      }
+      if (stateLabel) {
+        stateLabel.textContent = manual.phone || manual.note ? "已儲存在這台裝置" : "尚未填寫手動資料";
+      }
+      renderTagFilters();
+    }
+
     function goNext() {
-      const target = visibleCompanies.find((company) => !progress[company.id] && company.phone) ||
+      const target = visibleCompanies.find((company) => !progress[company.id] && hasAnyPhone(company)) ||
         visibleCompanies.find((company) => !progress[company.id]);
       if (!target) return;
       const targetIndex = visibleCompanies.findIndex((company) => company.id === target.id);
@@ -947,6 +1100,11 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+    }
+
+    function cssEscape(value) {
+      if (window.CSS && CSS.escape) return CSS.escape(String(value));
+      return String(value).replace(/"/g, '\\"');
     }
 
     function wireEvents() {
@@ -1006,6 +1164,17 @@
         if (callLink) {
           markDone(callLink.dataset.call, false);
           window.setTimeout(applyFilters, 800);
+        }
+      });
+      list.addEventListener("input", (event) => {
+        const phoneInput = event.target.closest("[data-manual-phone]");
+        if (phoneInput) {
+          updateManualField(phoneInput.dataset.manualPhone, "phone", phoneInput.value);
+          return;
+        }
+        const noteInput = event.target.closest("[data-manual-note]");
+        if (noteInput) {
+          updateManualField(noteInput.dataset.manualNote, "note", noteInput.value);
         }
       });
     }
