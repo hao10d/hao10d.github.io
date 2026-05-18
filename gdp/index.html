@@ -642,10 +642,12 @@
       const cityAll = companies.filter((company) => company.city === citySelect.value);
       const cityCalled = cityAll.filter((company) => progress[company.id]).length;
       const withPhone = cityAll.filter((company) => company.phone).length;
+      const sourceRows = cityAll.reduce((sum, company) => sum + (company.sourceCount || 1), 0);
       progressCount.textContent = `${cityCalled} / ${cityAll.length}`;
       summaryLine.innerHTML = [
         `<strong>${escapeHtml(citySelect.value)}</strong>`,
         `符合 ${visibleCompanies.length} 家`,
+        `原始 ${sourceRows} 筆`,
         `已載入 ${Math.min(renderLimit, visibleCompanies.length)} 家`,
         `有電話 ${withPhone} 家`,
         `已電訪 ${cityCalled} 家`,
@@ -669,6 +671,8 @@
       const phoneHref = company.phone ? `tel:${telNumber(company.phone)}` : "#";
       const sourceTag = company.confidence ? `<span class="tag source">${escapeHtml(company.confidence)}信心</span>` : `<span class="tag warn">待查電話</span>`;
       const ops = [company.westOps && `西藥製劑：${company.westOps}`, company.apiOps && `原料藥：${company.apiOps}`].filter(Boolean).join("；");
+      const recordIds = Array.isArray(company.recordIds) ? company.recordIds.join(", ") : company.id;
+      const mergedTag = company.sourceCount > 1 ? `<span class="tag source">合併 ${company.sourceCount} 筆</span>` : "";
       return `
         <article class="company${done ? " done" : ""}" id="company-${company.id}">
           <div class="serial">${filteredIndex}</div>
@@ -677,7 +681,8 @@
               <div>
                 <h2>${escapeHtml(company.name)}</h2>
                 <div class="meta">
-                  <span class="tag">名單序號 ${company.id}</span>
+                  <span class="tag">原始序號 ${escapeHtml(recordIds)}</span>
+                  ${mergedTag}
                   <span class="tag">${escapeHtml(company.kind)}</span>
                   <span class="tag">${escapeHtml(company.district || company.city)}</span>
                   ${company.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
@@ -699,6 +704,7 @@
               <summary>來源與比對</summary>
               <div class="source-grid">
                 <span>狀態</span><strong>${escapeHtml(company.lookupStatus)}</strong>
+                <span>原始序號</span><strong>${escapeHtml(recordIds)}</strong>
                 <span>來源</span><strong>${escapeHtml(company.phoneSource || "無")}</strong>
                 <span>網址</span>${company.sourceUrl ? `<a href="${escapeHtml(company.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(company.sourceUrl)}</a>` : "<strong>無</strong>"}
                 <span>說明</span><strong>${escapeHtml(company.matchNote || "未找到可驗證公開電話")}</strong>
