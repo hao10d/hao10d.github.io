@@ -213,6 +213,62 @@
       font-weight: 800;
     }
 
+    .tag-filter {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: 0 8px 22px rgba(28, 41, 36, .06);
+    }
+
+    .filter-mode {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .mode-button,
+    .filter-chip {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--ink);
+      padding: 0 12px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .mode-button.active.want,
+    .filter-chip.want {
+      border-color: var(--green);
+      background: #e6f2ed;
+      color: var(--green-dark);
+    }
+
+    .mode-button.active.avoid,
+    .filter-chip.avoid {
+      border-color: #e5b8b5;
+      background: #fff0ef;
+      color: var(--red);
+    }
+
+    .tag-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter-help {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
     .summary-line {
       display: flex;
       flex-wrap: wrap;
@@ -317,6 +373,41 @@
 
     .intro {
       color: #33433d;
+    }
+
+    .merge-records {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid #d8e7e0;
+      border-radius: 8px;
+      background: #f6fbf8;
+    }
+
+    .merge-records strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--green-dark);
+    }
+
+    .merge-row {
+      display: grid;
+      grid-template-columns: 80px 78px 1fr 1fr;
+      gap: 8px;
+      padding: 7px 0;
+      border-top: 1px solid #dfeae5;
+      color: #33433d;
+      font-size: 14px;
+    }
+
+    .merge-row:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .merge-id,
+    .merge-kind {
+      font-weight: 900;
+      color: var(--ink);
     }
 
     .card-actions {
@@ -446,6 +537,11 @@
         padding: 12px;
       }
 
+      .merge-row {
+        grid-template-columns: 1fr;
+        gap: 3px;
+      }
+
       .company {
         grid-template-columns: 1fr;
       }
@@ -518,6 +614,16 @@
       <button class="action-button" id="nextButton" type="button">下一筆未電訪</button>
     </section>
 
+    <section class="tag-filter" aria-label="標籤篩選">
+      <div class="filter-mode">
+        <button class="mode-button want" type="button" data-filter-mode="want">想要</button>
+        <button class="mode-button avoid" type="button" data-filter-mode="avoid">不想要</button>
+        <button class="mode-button" type="button" data-clear-tags>清除標籤</button>
+      </div>
+      <div class="tag-options" id="tagOptions"></div>
+      <div class="filter-help" id="filterHelp">先選想要或不想要，再點標籤。</div>
+    </section>
+
     <nav class="city-strip" id="cityStrip" aria-label="縣市快速選擇"></nav>
 
     <div class="summary-line" id="summaryLine"></div>
@@ -538,6 +644,8 @@
     const searchInput = document.querySelector("#searchInput");
     const phoneOnly = document.querySelector("#phoneOnly");
     const hideDone = document.querySelector("#hideDone");
+    const tagOptions = document.querySelector("#tagOptions");
+    const filterHelp = document.querySelector("#filterHelp");
     const list = document.querySelector("#companyList");
     const summaryLine = document.querySelector("#summaryLine");
     const progressCount = document.querySelector("#progressCount");
@@ -551,6 +659,10 @@
     let state = loadState();
     let visibleCompanies = [];
     let renderLimit = 60;
+    const tagChoices = ["製造業", "販賣業", "西藥製劑", "原料藥", "冷鏈藥品", "醫用氣體", "有電話", "無公開電話"];
+    let activeTagMode = state.activeTagMode || "want";
+    let includeTags = new Set(state.includeTags || []);
+    let excludeTags = new Set(state.excludeTags || []);
 
     function loadProgress() {
       try {
@@ -601,6 +713,51 @@
       if (active) active.scrollIntoView({ block: "nearest", inline: "center" });
     }
 
+    function splitKindTags(kind) {
+      return String(kind || "").split(" / ").map((item) => item.trim()).filter(Boolean);
+    }
+
+    function companyTagSet(company) {
+      return new Set([
+        ...(company.kindTags || splitKindTags(company.kind)),
+        ...(company.tags || []),
+        company.phone ? "有電話" : "無公開電話",
+      ]);
+    }
+
+    function renderTagFilters() {
+      document.querySelectorAll("[data-filter-mode]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.filterMode === activeTagMode);
+      });
+      tagOptions.innerHTML = tagChoices.map((tag) => {
+        const want = includeTags.has(tag);
+        const avoid = excludeTags.has(tag);
+        const className = want ? " want" : avoid ? " avoid" : "";
+        const prefix = want ? "想要 " : avoid ? "不要 " : "";
+        return `<button class="filter-chip${className}" type="button" data-filter-tag="${escapeHtml(tag)}">${prefix}${escapeHtml(tag)}</button>`;
+      }).join("");
+      const wanted = [...includeTags].map((tag) => `想要 ${tag}`).join("、") || "沒有想要標籤";
+      const avoided = [...excludeTags].map((tag) => `不要 ${tag}`).join("、") || "沒有排除標籤";
+      filterHelp.textContent = `${wanted}；${avoided}`;
+    }
+
+    function toggleFilterTag(tag) {
+      if (activeTagMode === "want") {
+        excludeTags.delete(tag);
+        includeTags.has(tag) ? includeTags.delete(tag) : includeTags.add(tag);
+      } else {
+        includeTags.delete(tag);
+        excludeTags.has(tag) ? excludeTags.delete(tag) : excludeTags.add(tag);
+      }
+      applyFilters();
+    }
+
+    function clearTagFilters() {
+      includeTags = new Set();
+      excludeTags = new Set();
+      applyFilters();
+    }
+
     function normalize(value) {
       return String(value || "").toLocaleLowerCase("zh-Hant").replace(/\s+/g, "");
     }
@@ -611,10 +768,12 @@
         company.address,
         company.phone,
         company.kind,
+        (company.kindTags || []).join(" "),
         company.westOps,
         company.apiOps,
         company.intro,
         company.tags.join(" "),
+        (company.recordDetails || []).map((item) => `${item.id} ${item.kind} ${item.westOps} ${item.apiOps}`).join(" "),
       ].join(" "));
     }
 
@@ -625,6 +784,13 @@
         if (company.city !== city) return false;
         if (phoneOnly.checked && !company.phone) return false;
         if (hideDone.checked && progress[company.id]) return false;
+        const tags = companyTagSet(company);
+        for (const tag of includeTags) {
+          if (!tags.has(tag)) return false;
+        }
+        for (const tag of excludeTags) {
+          if (tags.has(tag)) return false;
+        }
         if (keyword && !companySearchText(company).includes(keyword)) return false;
         return true;
       });
@@ -632,8 +798,12 @@
       state.search = searchInput.value;
       state.phoneOnly = phoneOnly.checked;
       state.hideDone = hideDone.checked;
+      state.includeTags = [...includeTags];
+      state.excludeTags = [...excludeTags];
+      state.activeTagMode = activeTagMode;
       saveState();
       setActiveCityChip();
+      renderTagFilters();
       renderLimit = 60;
       render();
     }
@@ -641,8 +811,8 @@
     function render() {
       const cityAll = companies.filter((company) => company.city === citySelect.value);
       const cityCalled = cityAll.filter((company) => progress[company.id]).length;
-      const withPhone = cityAll.filter((company) => company.phone).length;
-      const sourceRows = cityAll.reduce((sum, company) => sum + (company.sourceCount || 1), 0);
+      const withPhone = visibleCompanies.filter((company) => company.phone).length;
+      const sourceRows = visibleCompanies.reduce((sum, company) => sum + (company.sourceCount || 1), 0);
       progressCount.textContent = `${cityCalled} / ${cityAll.length}`;
       summaryLine.innerHTML = [
         `<strong>${escapeHtml(citySelect.value)}</strong>`,
@@ -673,6 +843,8 @@
       const ops = [company.westOps && `西藥製劑：${company.westOps}`, company.apiOps && `原料藥：${company.apiOps}`].filter(Boolean).join("；");
       const recordIds = Array.isArray(company.recordIds) ? company.recordIds.join(", ") : company.id;
       const mergedTag = company.sourceCount > 1 ? `<span class="tag source">合併 ${company.sourceCount} 筆</span>` : "";
+      const kindTags = company.kindTags || splitKindTags(company.kind);
+      const mergeRows = company.sourceCount > 1 ? mergeDetails(company) : "";
       return `
         <article class="company${done ? " done" : ""}" id="company-${company.id}">
           <div class="serial">${filteredIndex}</div>
@@ -683,13 +855,14 @@
                 <div class="meta">
                   <span class="tag">原始序號 ${escapeHtml(recordIds)}</span>
                   ${mergedTag}
-                  <span class="tag">${escapeHtml(company.kind)}</span>
+                  ${kindTags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
                   <span class="tag">${escapeHtml(company.district || company.city)}</span>
                   ${company.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
                   ${sourceTag}
                 </div>
               </div>
             </div>
+            ${mergeRows}
             <p class="intro">${escapeHtml(company.intro)}</p>
             <p class="address">${escapeHtml(company.address)}</p>
             ${ops ? `<p class="ops">${escapeHtml(ops)}</p>` : ""}
@@ -713,6 +886,22 @@
           </div>
         </article>
       `;
+    }
+
+    function mergeDetails(company) {
+      const rows = (company.recordDetails || []).map((item) => {
+        const west = item.westOps ? `西藥製劑：${escapeHtml(item.westOps)}` : "西藥製劑：無";
+        const api = item.apiOps ? `原料藥：${escapeHtml(item.apiOps)}` : "原料藥：無";
+        return `
+          <div class="merge-row">
+            <span class="merge-id">#${escapeHtml(item.id)}</span>
+            <span class="merge-kind">${escapeHtml(item.kind)}</span>
+            <span>${west}</span>
+            <span>${api}</span>
+          </div>
+        `;
+      }).join("");
+      return `<div class="merge-records"><strong>合併明細</strong>${rows}</div>`;
     }
 
     function telNumber(phone) {
@@ -779,6 +968,18 @@
         citySelect.value = button.dataset.city;
         applyFilters();
       });
+      document.querySelectorAll("[data-filter-mode]").forEach((button) => {
+        button.addEventListener("click", () => {
+          activeTagMode = button.dataset.filterMode;
+          renderTagFilters();
+        });
+      });
+      document.querySelector("[data-clear-tags]").addEventListener("click", clearTagFilters);
+      tagOptions.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-filter-tag]");
+        if (!button) return;
+        toggleFilterTag(button.dataset.filterTag);
+      });
       list.addEventListener("click", async (event) => {
         const doneButton = event.target.closest("[data-done]");
         if (doneButton) {
@@ -815,6 +1016,7 @@
       phoneOnly.checked = Boolean(state.phoneOnly);
       hideDone.checked = Boolean(state.hideDone);
       wireEvents();
+      renderTagFilters();
       applyFilters();
     }
 
